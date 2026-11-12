@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { mediaService } from '../services/mediaService';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
@@ -17,7 +17,7 @@ export function MediaProvider({ children }) {
   );
   const [watchLaterIds, setWatchLaterIds] = useLocalStorage('watchLater', [
     'vid-01',
-    'vid-07',
+    'vid-03',
   ]);
   const [historyItems, setHistoryItems] = useLocalStorage(
     'history',
@@ -46,7 +46,7 @@ export function MediaProvider({ children }) {
 
   const isBookmarked = (videoId) => watchLaterIds.includes(videoId);
 
-  const recordWatch = (videoId) => {
+  const recordWatch = useCallback((videoId) => {
     setHistoryItems((prev) => {
       const filtered = prev.filter((item) => item.videoId !== videoId);
       return [
@@ -58,12 +58,7 @@ export function MediaProvider({ children }) {
         ...filtered,
       ];
     });
-  };
-
-  const openVideo = (video) => {
-    recordWatch(video.id);
-    setSelectedMedia({ type: 'video', item: video });
-  };
+  }, [setHistoryItems]);
 
   const openStream = (stream) => {
     setSelectedMedia({ type: 'stream', item: stream });
@@ -181,7 +176,6 @@ export function MediaProvider({ children }) {
     searchQuery,
     setSearchQuery,
     selectedMedia,
-    openVideo,
     openStream,
     closeMediaModal,
     toggleWatchLater,

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Bookmark, BookmarkCheck, Play, Trash2 } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
+import { mediaService } from '../services/mediaService';
 
 export function VideoCard({
   video,
@@ -8,17 +10,35 @@ export function VideoCard({
   progress,
   onRemoveHistory,
 }) {
-  const { isBookmarked, toggleWatchLater, openVideo, compactDensity } = useMedia();
+  const { isBookmarked, toggleWatchLater, compactDensity } = useMedia();
   const [imgError, setImgError] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const bookmarked = isBookmarked(video.id);
+  const youtubeVideoId = !video.isDemoOnly
+    ? mediaService.extractYouTubeVideoId(video)
+    : null;
+
+  const handleOpenWatch = () => {
+    const from = `${location.pathname}${location.search}`;
+    if (youtubeVideoId) {
+      navigate(`/watch?v=${encodeURIComponent(youtubeVideoId)}`, {
+        state: { from },
+      });
+      return;
+    }
+    navigate(`/watch?demo=${encodeURIComponent(video.id)}`, {
+      state: { from },
+    });
+  };
 
   return (
     <article className="group flex flex-col rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--text-secondary)]/40 hover:bg-[var(--bg-elevated)]/70 transition-colors duration-150 overflow-hidden">
       {/* Thumbnail */}
       <button
         type="button"
-        onClick={() => openVideo(video)}
+        onClick={handleOpenWatch}
         className="relative aspect-video w-full bg-[var(--bg-elevated)] overflow-hidden text-left cursor-pointer focus:outline-none"
         aria-label={`Watch ${video.title}`}
       >
@@ -44,6 +64,13 @@ export function VideoCard({
           </span>
         </div>
 
+        {/* Demo-only indicator */}
+        {!youtubeVideoId && (
+          <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wide bg-[#171614]/90 text-[#A8A29A] border border-[#38332E]/90">
+            Demo
+          </span>
+        )}
+
         {/* Duration badge */}
         <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-[#171614]/90 text-[#F2EEE7] border border-[#38332E]/80">
           {video.duration}
@@ -65,7 +92,7 @@ export function VideoCard({
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
-            onClick={() => openVideo(video)}
+            onClick={handleOpenWatch}
             className="text-left focus:outline-none cursor-pointer"
           >
             <h3 className="text-sm font-medium leading-snug text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors duration-150 line-clamp-2">
@@ -137,4 +164,3 @@ export function VideoCard({
     </article>
   );
 }
-

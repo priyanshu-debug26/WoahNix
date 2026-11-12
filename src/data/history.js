@@ -1,6 +1,6 @@
 export const INITIAL_HISTORY = [
   {
-    videoId: 'vid-07',
+    videoId: 'vid-02',
     watchedAt: 'Today, 2:15 PM',
     progress: 100,
   },
@@ -10,14 +10,8 @@ export const INITIAL_HISTORY = [
     progress: 78,
   },
   {
-    videoId: 'vid-11',
+    videoId: 'vid-05',
     watchedAt: 'Yesterday, 6:10 PM',
     progress: 100,
   },
-  {
-    videoId: 'vid-04',
-    watchedAt: '2 days ago',
-    progress: 45,
-  },
 ];
-

@@ -99,7 +99,7 @@ export function HistoryPage() {
         <EmptyState
           icon={History}
           title="No watch history yet"
-          description="Click any video across WoahNix to preview it and it will automatically appear here."
+          description="Click any playable video across WoahNix to watch it and it will automatically appear here."
           action={
             <Link
               to="/"

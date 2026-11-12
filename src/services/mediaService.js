@@ -1,8 +1,10 @@
-import { CATEGORIES, EXPLORE_TOPICS } from '../data/categories';
-import { INITIAL_CHANNELS } from '../data/channels';
-import { MOCK_VIDEOS } from '../data/videos';
-import { INITIAL_STREAMS } from '../data/streams';
-import { INITIAL_HISTORY } from '../data/history';
+import { CATEGORIES, EXPLORE_TOPICS } from '../data/categories.js';
+import { INITIAL_CHANNELS } from '../data/channels.js';
+import { MOCK_VIDEOS } from '../data/videos.js';
+import { INITIAL_STREAMS } from '../data/streams.js';
+import { INITIAL_HISTORY } from '../data/history.js';
+
+const YOUTUBE_ID_REGEX = /^[A-Za-z0-9_-]{11}$/;
 
 /**
  * Abstraction layer for media data.
@@ -10,6 +12,52 @@ import { INITIAL_HISTORY } from '../data/history';
  * can be swapped with Spring Boot REST API calls later.
  */
 export const mediaService = {
+  isValidYouTubeVideoId(videoId) {
+    return typeof videoId === 'string' && YOUTUBE_ID_REGEX.test(videoId.trim());
+  },
+
+  extractYouTubeVideoId(source) {
+    if (!source) return null;
+
+    if (typeof source === 'object') {
+      if (this.isValidYouTubeVideoId(source.youtubeVideoId)) {
+        return source.youtubeVideoId.trim();
+      }
+      if (source.url) {
+        return this.extractYouTubeVideoId(source.url);
+      }
+      return null;
+    }
+
+    if (typeof source !== 'string') return null;
+    const trimmed = source.trim();
+    if (this.isValidYouTubeVideoId(trimmed)) return trimmed;
+
+    try {
+      const parsed = new URL(trimmed);
+      const host = parsed.hostname.replace(/^www\./, '');
+
+      if (host === 'youtu.be') {
+        const id = parsed.pathname.split('/').filter(Boolean)[0];
+        return this.isValidYouTubeVideoId(id) ? id : null;
+      }
+
+      if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+        const vParam = parsed.searchParams.get('v');
+        if (this.isValidYouTubeVideoId(vParam)) return vParam;
+
+        const segments = parsed.pathname.split('/').filter(Boolean);
+        if (['embed', 'shorts', 'live', 'v'].includes(segments[0])) {
+          return this.isValidYouTubeVideoId(segments[1]) ? segments[1] : null;
+        }
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  },
+
   getCategories() {
     return CATEGORIES;
   },

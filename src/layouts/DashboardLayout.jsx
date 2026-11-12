@@ -13,6 +13,7 @@ const PAGE_TITLES = {
   '/watch-later': 'Watch Later',
   '/history': 'History',
   '/settings': 'Settings',
+  '/watch': 'Watch',
 };
 
 export function DashboardLayout() {

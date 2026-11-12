@@ -8,6 +8,7 @@ import { ExplorePage } from './pages/ExplorePage';
 import { WatchLaterPage } from './pages/WatchLaterPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { WatchPage } from './pages/WatchPage';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/watch-later" element={<WatchLaterPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/watch" element={<WatchPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

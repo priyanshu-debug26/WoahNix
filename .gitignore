@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Local environment & logs
+.env
+.env.*
+*.log
+npm-debug.log*
+
+# OS / Desktop metadata
+.directory
+.DS_Store

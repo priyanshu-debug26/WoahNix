@@ -2,23 +2,34 @@ import { useMemo } from 'react';
 import { Bookmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useMedia } from '../context/MediaContext';
+import { useAuth } from '../context/AuthContext';
+import { mediaService } from '../services/mediaService';
 import { SectionHeader } from '../components/SectionHeader';
 import { VideoCard } from '../components/VideoCard';
 import { EmptyState } from '../components/EmptyState';
+import { AuthRequiredCard } from '../components/AuthRequiredCard';
 
 export function WatchLaterPage() {
+  const { isAuthenticated } = useAuth();
   const { watchLaterVideos, searchQuery } = useMedia();
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return watchLaterVideos;
-    return watchLaterVideos.filter(
-      (video) =>
-        video.title.toLowerCase().includes(q) ||
-        video.channelName.toLowerCase().includes(q) ||
-        video.category.toLowerCase().includes(q)
+  const filtered = useMemo(
+    () =>
+      mediaService.filterVideos(watchLaterVideos, {
+        query: searchQuery,
+      }),
+    [watchLaterVideos, searchQuery]
+  );
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        icon={Bookmark}
+        title="Sign in to access Watch Later"
+        description="Save YouTube videos to your personal Watch Later queue once signed in. You can continue watching videos directly in Guest mode."
+      />
     );
-  }, [watchLaterVideos, searchQuery]);
+  }
 
   return (
     <div className="space-y-6">
@@ -36,7 +47,7 @@ export function WatchLaterPage() {
         <EmptyState
           icon={Bookmark}
           title="Your Watch Later queue is empty"
-          description="Bookmark any video from Home, Following, or Explore using the bookmark icon on its card."
+          description="Bookmark any playable YouTube video from Home, Explore, or the Watch page."
           action={
             <Link
               to="/"
@@ -62,4 +73,3 @@ export function WatchLaterPage() {
     </div>
   );
 }
-

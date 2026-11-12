@@ -1,25 +1,23 @@
 import { useMemo, useState } from 'react';
 import { Radio, Sparkles, Tv, SearchX } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
+import { useAuth } from '../context/AuthContext';
+import { mediaService } from '../services/mediaService';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { SectionHeader } from '../components/SectionHeader';
 import { LiveCard } from '../components/LiveCard';
 import { VideoCard } from '../components/VideoCard';
 import { EmptyState } from '../components/EmptyState';
 
-function matchesQuery(textFields, query) {
-  if (!query.trim()) return true;
-  const q = query.trim().toLowerCase();
-  return textFields.some((field) => field && field.toLowerCase().includes(q));
-}
-
 export function HomePage() {
+  const { isAuthenticated } = useAuth();
   const {
     videos,
     categories,
     liveStreams,
     channels,
     interests,
+    isLoading,
     searchQuery,
     setSearchQuery,
   } = useMedia();
@@ -31,45 +29,35 @@ export function HomePage() {
     [channels]
   );
 
-  const filteredLiveStreams = useMemo(() => {
-    return liveStreams.filter((stream) => {
-      const catMatch =
-        activeCategory === 'All' || stream.category === activeCategory;
-      const queryMatch = matchesQuery(
-        [stream.displayName, stream.streamerName, stream.title, stream.game, stream.category],
-        searchQuery
-      );
-      return catMatch && queryMatch;
-    });
-  }, [liveStreams, activeCategory, searchQuery]);
+  const filteredLiveStreams = useMemo(
+    () =>
+      mediaService.filterStreams(liveStreams, {
+        category: activeCategory,
+        query: searchQuery,
+        onlyLive: true,
+      }),
+    [liveStreams, activeCategory, searchQuery]
+  );
 
   const recommendedVideos = useMemo(() => {
-    return videos.filter((video) => {
-      if (!video.isRecommended) return false;
-      const catMatch =
-        activeCategory === 'All'
-          ? interests.length === 0 || interests.includes(video.category)
-          : video.category === activeCategory;
-      const queryMatch = matchesQuery(
-        [video.title, video.channelName, video.category, video.description],
-        searchQuery
-      );
-      return catMatch && queryMatch;
+    const recommended = videos.filter((video) => video.isRecommended);
+    return mediaService.filterVideos(recommended, {
+      category: activeCategory,
+      query: searchQuery,
+      allowedInterests: isAuthenticated ? interests : null,
     });
-  }, [videos, activeCategory, interests, searchQuery]);
+  }, [videos, activeCategory, interests, searchQuery, isAuthenticated]);
 
   const latestFromChannels = useMemo(() => {
-    return videos.filter((video) => {
-      if (!subscribedIds.has(video.channelId)) return false;
-      const catMatch =
-        activeCategory === 'All' || video.category === activeCategory;
-      const queryMatch = matchesQuery(
-        [video.title, video.channelName, video.category, video.description],
-        searchQuery
-      );
-      return catMatch && queryMatch;
+    if (!isAuthenticated) return [];
+    const fromSubscribed = videos.filter((video) =>
+      subscribedIds.has(video.channelId)
+    );
+    return mediaService.filterVideos(fromSubscribed, {
+      category: activeCategory,
+      query: searchQuery,
     });
-  }, [videos, subscribedIds, activeCategory, searchQuery]);
+  }, [videos, subscribedIds, activeCategory, searchQuery, isAuthenticated]);
 
   const hasAnyResults =
     filteredLiveStreams.length > 0 ||
@@ -96,7 +84,22 @@ export function HomePage() {
         />
       </section>
 
-      {!hasAnyResults ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {[1, 2, 3, 4, 5, 6].map((slot) => (
+            <div
+              key={slot}
+              className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden animate-pulse"
+            >
+              <div className="aspect-video bg-[var(--bg-elevated)]" />
+              <div className="p-4 space-y-2.5">
+                <div className="h-4 w-4/5 rounded bg-[var(--bg-elevated)]" />
+                <div className="h-3 w-1/2 rounded bg-[var(--bg-elevated)]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : !hasAnyResults ? (
         <EmptyState
           icon={SearchX}
           title="No matching streams or videos"
@@ -144,7 +147,11 @@ export function HomePage() {
             <section>
               <SectionHeader
                 title="Recommended For You"
-                subtitle="Curated around your selected topics in Settings"
+                subtitle={
+                  isAuthenticated
+                    ? 'Curated around your selected topics in Settings'
+                    : 'Featured videos across programming, technology, and music'
+                }
                 actionLabel="Explore more"
                 actionTo="/explore"
                 badge={
@@ -159,8 +166,8 @@ export function HomePage() {
             </section>
           )}
 
-          {/* Latest From Your Channels */}
-          {latestFromChannels.length > 0 && (
+          {/* Latest From Your Channels (Registered mode) */}
+          {isAuthenticated && latestFromChannels.length > 0 && (
             <section>
               <SectionHeader
                 title="Latest From Your Channels"
@@ -183,4 +190,3 @@ export function HomePage() {
     </div>
   );
 }
-

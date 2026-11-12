@@ -1,24 +1,19 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bookmark, BookmarkCheck, Play, Trash2 } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Play } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
 import { mediaService } from '../services/mediaService';
 
-export function VideoCard({
-  video,
-  watchedAt,
-  progress,
-  onRemoveHistory,
-}) {
-  const { isBookmarked, toggleWatchLater, compactDensity } = useMedia();
+export function VideoCard({ video }) {
+  const { isBookmarked, toggleWatchLater, compactDensity, pendingActions } = useMedia();
   const [imgError, setImgError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const bookmarked = isBookmarked(video.id);
   const youtubeVideoId = !video.isDemoOnly
     ? mediaService.extractYouTubeVideoId(video)
     : null;
+  const bookmarked = youtubeVideoId ? isBookmarked(youtubeVideoId) : false;
 
   const handleOpenWatch = () => {
     const from = `${location.pathname}${location.search}`;
@@ -75,16 +70,6 @@ export function VideoCard({
         <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-[#171614]/90 text-[#F2EEE7] border border-[#38332E]/80">
           {video.duration}
         </span>
-
-        {/* History progress bar */}
-        {typeof progress === 'number' && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#171614]/80">
-            <div
-              className="h-full bg-[var(--accent-primary)]"
-              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-            />
-          </div>
-        )}
       </button>
 
       {/* Card Body */}
@@ -100,37 +85,28 @@ export function VideoCard({
             </h3>
           </button>
 
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => toggleWatchLater(video.id)}
-              aria-label={bookmarked ? 'Remove from Watch Later' : 'Save to Watch Later'}
-              title={bookmarked ? 'Saved to Watch Later' : 'Save to Watch Later'}
-              className={`p-1.5 rounded-md border transition-colors duration-150 cursor-pointer ${
-                bookmarked
-                  ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border-[var(--accent-primary)]/40'
-                  : 'bg-transparent text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              {bookmarked ? (
-                <BookmarkCheck className="w-4 h-4" />
-              ) : (
-                <Bookmark className="w-4 h-4" />
-              )}
-            </button>
-
-            {onRemoveHistory && (
+          {youtubeVideoId && (
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
-                onClick={() => onRemoveHistory(video.id)}
-                aria-label="Remove from watch history"
-                title="Remove from history"
-                className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors duration-150 cursor-pointer"
+                disabled={pendingActions.watchLater}
+                onClick={() => void toggleWatchLater(youtubeVideoId)}
+                aria-label={bookmarked ? 'Remove from Watch Later' : 'Save to Watch Later'}
+                title={bookmarked ? 'Saved to Watch Later' : 'Save to Watch Later'}
+                className={`p-1.5 rounded-md border transition-colors duration-150 cursor-pointer disabled:opacity-60 ${
+                  bookmarked
+                    ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border-[var(--accent-primary)]/40'
+                    : 'bg-transparent text-[var(--text-secondary)] border-transparent hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
+                }`}
               >
-                <Trash2 className="w-4 h-4" />
+                {bookmarked ? (
+                  <BookmarkCheck className="w-4 h-4" />
+                ) : (
+                  <Bookmark className="w-4 h-4" />
+                )}
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Channel & metadata */}
@@ -150,15 +126,9 @@ export function VideoCard({
         </div>
 
         <div className="mt-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-          {watchedAt ? (
-            <span>Watched {watchedAt}</span>
-          ) : (
-            <>
-              <span>{video.views} views</span>
-              <span aria-hidden="true">·</span>
-              <span>{video.publishedAt}</span>
-            </>
-          )}
+          <span>{video.views} views</span>
+          <span aria-hidden="true">·</span>
+          <span>{video.publishedAt}</span>
         </div>
       </div>
     </article>

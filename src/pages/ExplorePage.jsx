@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Compass, Code2, Flag, Cpu, Gamepad2, Music } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
+import { mediaService } from '../services/mediaService';
 import { SearchBar } from '../components/SearchBar';
 import { CategoryTabs } from '../components/CategoryTabs';
 import { SectionHeader } from '../components/SectionHeader';
@@ -16,26 +17,30 @@ const TOPIC_ICONS = {
 };
 
 export function ExplorePage() {
-  const { videos, categories, exploreTopics, searchQuery } = useMedia();
+  const { videos, categories, exploreTopics, searchQuery, setSearchQuery, isLoading } =
+    useMedia();
   const [activeCategory, setActiveCategory] = useState('All');
   const [localQuery, setLocalQuery] = useState('');
 
-  const combinedQuery = (localQuery || searchQuery).trim().toLowerCase();
+  const topicCounts = useMemo(() => {
+    const counts = {};
+    for (const video of videos) {
+      counts[video.category] = (counts[video.category] || 0) + 1;
+    }
+    return counts;
+  }, [videos]);
 
   const filteredVideos = useMemo(() => {
-    return videos.filter((video) => {
-      const catMatch =
-        activeCategory === 'All' || video.category === activeCategory;
-      if (!catMatch) return false;
-      if (!combinedQuery) return true;
-      return (
-        video.title.toLowerCase().includes(combinedQuery) ||
-        video.channelName.toLowerCase().includes(combinedQuery) ||
-        video.category.toLowerCase().includes(combinedQuery) ||
-        video.description.toLowerCase().includes(combinedQuery)
-      );
+    const byCategoryAndGlobal = mediaService.filterVideos(videos, {
+      category: activeCategory,
+      query: searchQuery,
     });
-  }, [videos, activeCategory, combinedQuery]);
+    if (!localQuery.trim()) return byCategoryAndGlobal;
+    return mediaService.filterVideos(byCategoryAndGlobal, {
+      category: activeCategory,
+      query: localQuery,
+    });
+  }, [videos, activeCategory, searchQuery, localQuery]);
 
   return (
     <div className="space-y-9">
@@ -50,6 +55,7 @@ export function ExplorePage() {
           {exploreTopics.map((topic) => {
             const Icon = TOPIC_ICONS[topic.id] || Compass;
             const isActive = activeCategory === topic.id;
+            const count = topicCounts[topic.id] || 0;
             return (
               <button
                 key={topic.id}
@@ -74,7 +80,7 @@ export function ExplorePage() {
                     <Icon className="w-4 h-4" />
                   </span>
                   <span className="text-[11px] text-[var(--text-secondary)]">
-                    {topic.videoCount} videos
+                    {count} {count === 1 ? 'video' : 'videos'}
                   </span>
                 </div>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -113,7 +119,22 @@ export function ExplorePage() {
           } matching your filters`}
         />
 
-        {filteredVideos.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {[1, 2, 3].map((slot) => (
+              <div
+                key={slot}
+                className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] overflow-hidden animate-pulse"
+              >
+                <div className="aspect-video bg-[var(--bg-elevated)]" />
+                <div className="p-4 space-y-2">
+                  <div className="h-4 w-4/5 rounded bg-[var(--bg-elevated)]" />
+                  <div className="h-3 w-1/2 rounded bg-[var(--bg-elevated)]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredVideos.length === 0 ? (
           <EmptyState
             icon={Compass}
             title="Nothing found for that filter"
@@ -124,6 +145,7 @@ export function ExplorePage() {
                 onClick={() => {
                   setActiveCategory('All');
                   setLocalQuery('');
+                  setSearchQuery('');
                 }}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors cursor-pointer"
               >
@@ -142,4 +164,3 @@ export function ExplorePage() {
     </div>
   );
 }
-

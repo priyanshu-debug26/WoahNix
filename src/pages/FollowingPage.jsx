@@ -1,46 +1,31 @@
 import { useMemo, useState } from 'react';
 import {
-  Plus,
   Trash2,
   ExternalLink,
   Users,
   Video as VideoIcon,
-  Check,
 } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
+import { useAuth } from '../context/AuthContext';
+import { mediaService } from '../services/mediaService';
 import { SectionHeader } from '../components/SectionHeader';
 import { VideoCard } from '../components/VideoCard';
 import { EmptyState } from '../components/EmptyState';
-
-const TOPIC_OPTIONS = ['Programming', 'Gaming', 'Formula 1', 'Music', 'Technology'];
+import { AuthRequiredCard } from '../components/AuthRequiredCard';
+import { SubscriptionForm } from '../components/SubscriptionForm';
 
 export function FollowingPage() {
+  const { isAuthenticated } = useAuth();
   const {
     channels,
     videos,
     searchQuery,
+    pendingActions,
     addChannel,
     removeChannel,
   } = useMedia();
 
-  const [channelInput, setChannelInput] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Programming');
   const [selectedChannelId, setSelectedChannelId] = useState('all');
-  const [formFeedback, setFormFeedback] = useState(null);
-
-  const handleAddChannel = (e) => {
-    e.preventDefault();
-    const res = addChannel(channelInput, selectedCategory);
-    if (res.error) {
-      setFormFeedback({ type: 'error', message: res.error });
-      return;
-    }
-    setChannelInput('');
-    setFormFeedback({
-      type: 'success',
-      message: `Added ${res.channel.name} (${res.channel.handle}) to Following.`,
-    });
-  };
 
   const subscribedIds = useMemo(
     () => new Set(channels.map((c) => c.id)),
@@ -48,25 +33,37 @@ export function FollowingPage() {
   );
 
   const channelVideos = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return videos.filter((video) => {
-      if (!subscribedIds.has(video.channelId)) return false;
-      if (selectedChannelId !== 'all' && video.channelId !== selectedChannelId) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        video.title.toLowerCase().includes(q) ||
-        video.channelName.toLowerCase().includes(q) ||
-        video.category.toLowerCase().includes(q)
-      );
+    const subscribedVideos = videos.filter((video) =>
+      subscribedIds.has(video.channelId)
+    );
+    return mediaService.filterVideos(subscribedVideos, {
+      query: searchQuery,
+      channelId: selectedChannelId,
     });
   }, [videos, subscribedIds, selectedChannelId, searchQuery]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        icon={Users}
+        title="Sign in to view your Following feed"
+        description="Following personal YouTube channels and managing subscriptions is available for registered accounts. Browse Home, Live, or Explore anytime as a guest."
+      />
+    );
+  }
+
+  const handleAddChannel = async (rawInput, category) => {
+    const res = await addChannel(rawInput, category);
+    if (res.error) return { error: res.error };
+    return {
+      successMessage: `Added ${res.channel.name} (${res.channel.handle}) to Following.`,
+    };
+  };
 
   return (
     <div className="space-y-8">
       {/* Channel Management Panel */}
-      <section className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-5 sm:p-6">
+      <section className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-5 sm:p-6 space-y-4">
         <SectionHeader
           title="YouTube Channels"
           subtitle="Add YouTube channel URLs or handles to organize your personal feed"
@@ -77,60 +74,18 @@ export function FollowingPage() {
           }
         />
 
-        <form
+        <SubscriptionForm
           onSubmit={handleAddChannel}
-          className="flex flex-col sm:flex-row gap-3 mt-4"
-        >
-          <input
-            type="text"
-            value={channelInput}
-            onChange={(e) => {
-              setChannelInput(e.target.value);
-              if (formFeedback) setFormFeedback(null);
-            }}
-            placeholder="https://youtube.com/@veritasium or @handle"
-            aria-label="YouTube channel URL or handle"
-            className="flex-1 bg-[var(--bg-main)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] text-sm px-3.5 py-2.5 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
-          />
-
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            aria-label="Channel category"
-            className="bg-[var(--bg-main)] text-[var(--text-primary)] text-sm px-3 py-2.5 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
-          >
-            {TOPIC_OPTIONS.map((topic) => (
-              <option key={topic} value={topic}>
-                {topic}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Add Channel
-          </button>
-        </form>
-
-        {formFeedback && (
-          <p
-            className={`mt-2.5 text-xs flex items-center gap-1.5 ${
-              formFeedback.type === 'error'
-                ? 'text-[#E57368]'
-                : 'text-[var(--accent-primary)]'
-            }`}
-          >
-            {formFeedback.type === 'success' && <Check className="w-3.5 h-3.5" />}
-            {formFeedback.message}
-          </p>
-        )}
+          placeholder="https://youtube.com/@veritasium or @handle"
+          ariaLabel="YouTube channel URL or handle"
+          submitLabel="Add Channel"
+          defaultCategory="Programming"
+          isPending={pendingActions.channels}
+        />
 
         {/* Subscribed channels grid */}
         {channels.length === 0 ? (
-          <div className="mt-6">
+          <div className="pt-2">
             <EmptyState
               icon={Users}
               title="No followed channels yet"
@@ -138,7 +93,7 @@ export function FollowingPage() {
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 pt-2">
             {channels.map((channel) => {
               const isSelected = selectedChannelId === channel.id;
               return (
@@ -170,7 +125,7 @@ export function FollowingPage() {
                         </span>
                       </div>
                       <p className="text-xs text-[var(--text-secondary)] truncate mt-0.5">
-                        {channel.handle} · {channel.subscribers} subscribers
+                        {channel.handle} · {channel.subscribers}
                       </p>
                       <p className="text-xs text-[var(--text-secondary)]/85 line-clamp-1 mt-1">
                         {channel.description}
@@ -191,15 +146,16 @@ export function FollowingPage() {
                     </a>
                     <button
                       type="button"
+                      disabled={pendingActions.channels}
                       onClick={() => {
                         if (selectedChannelId === channel.id) {
                           setSelectedChannelId('all');
                         }
-                        removeChannel(channel.id);
+                        void removeChannel(channel.id);
                       }}
                       aria-label={`Unfollow ${channel.name}`}
                       title="Remove channel"
-                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -252,4 +208,3 @@ export function FollowingPage() {
     </div>
   );
 }
-

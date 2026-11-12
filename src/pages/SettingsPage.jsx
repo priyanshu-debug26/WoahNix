@@ -3,16 +3,21 @@ import { Link } from 'react-router-dom';
 import {
   Youtube,
   Radio,
-  Plus,
   Trash2,
   Check,
   Palette,
   Sparkles,
   ExternalLink,
+  RefreshCw,
+  Unlink,
+  User,
+  LogOut,
+  Download,
 } from 'lucide-react';
 import { useMedia } from '../context/MediaContext';
-
-const TOPIC_OPTIONS = ['Programming', 'Gaming', 'Formula 1', 'Music', 'Technology'];
+import { useAuth } from '../context/AuthContext';
+import { TOPIC_OPTIONS } from '../data/categories';
+import { SubscriptionForm } from '../components/SubscriptionForm';
 
 const THEMES = [
   {
@@ -36,6 +41,7 @@ const THEMES = [
 ];
 
 export function SettingsPage() {
+  const { isAuthenticated, user, logout, openAuthPrompt } = useAuth();
   const {
     channels,
     addChannel,
@@ -43,54 +49,90 @@ export function SettingsPage() {
     streams,
     addStreamer,
     removeStreamer,
-    toggleStreamLive,
     interests,
     toggleInterest,
     theme,
     setTheme,
     compactDensity,
     setCompactDensity,
+    youtubeIntegration,
+    connectYouTube,
+    importYouTubeSubscriptions,
+    resyncYouTubeSubscriptions,
+    disconnectYouTube,
+    pendingActions,
   } = useMedia();
 
-  const [ytInput, setYtInput] = useState('');
-  const [ytCategory, setYtCategory] = useState('Programming');
-  const [ytFeedback, setYtFeedback] = useState(null);
+  const [youtubeConsentChecked, setYoutubeConsentChecked] = useState(false);
 
-  const [twitchInput, setTwitchInput] = useState('');
-  const [twitchCategory, setTwitchCategory] = useState('Gaming');
-  const [twitchFeedback, setTwitchFeedback] = useState(null);
-
-  const handleAddYouTube = (e) => {
-    e.preventDefault();
-    const res = addChannel(ytInput, ytCategory);
-    if (res.error) {
-      setYtFeedback({ type: 'error', message: res.error });
-      return;
-    }
-    setYtInput('');
-    setYtFeedback({
-      type: 'success',
-      message: `Added ${res.channel.name} (${res.channel.handle}).`,
-    });
+  const handleAddYouTube = async (rawInput, category) => {
+    const res = await addChannel(rawInput, category);
+    if (res.error) return { error: res.error };
+    return {
+      successMessage: `Added ${res.channel.name} (${res.channel.handle}).`,
+    };
   };
 
-  const handleAddTwitch = (e) => {
-    e.preventDefault();
-    const res = addStreamer(twitchInput, twitchCategory);
-    if (res.error) {
-      setTwitchFeedback({ type: 'error', message: res.error });
-      return;
-    }
-    setTwitchInput('');
-    setTwitchFeedback({
-      type: 'success',
-      message: `Added ${res.stream.displayName} (@${res.stream.streamerName}).`,
-    });
+  const handleAddTwitch = async (rawInput, category) => {
+    const res = await addStreamer(rawInput, category);
+    if (res.error) return { error: res.error };
+    return {
+      successMessage: `Added ${res.stream.displayName} (@${res.stream.streamerName}).`,
+    };
   };
 
   return (
     <div className="space-y-8 max-w-4xl">
-      {/* YouTube Connection Section (Visual UI + Local Channel URL Management) */}
+      {/* Account Status Section */}
+      <section className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--accent-primary)] shrink-0">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-[var(--text-primary)]">
+                {isAuthenticated
+                  ? user?.name || user?.email || 'WoahNix Account'
+                  : 'Guest Session'}
+              </h2>
+              <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+                {isAuthenticated
+                  ? `${user?.email || 'Signed in'} · Preferences and subscriptions sync through your account.`
+                  : 'Sign in or create an account to save Watch Later, personal channels, and topic interests.'}
+              </p>
+            </div>
+          </div>
+
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="self-start sm:self-center inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[#E57368]/50 hover:text-[#E57368] transition-colors cursor-pointer shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign out</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Link
+                to="/register"
+                className="px-3.5 py-2 rounded-lg text-sm font-medium bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--accent-primary)]/50 transition-colors"
+              >
+                Create account
+              </Link>
+              <Link
+                to="/login"
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors"
+              >
+                Sign in
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* YouTube Integration Section (Optional OAuth Permission Flow + Manual URLs) */}
       <section className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-5 sm:p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-start gap-3">
@@ -99,105 +141,174 @@ export function SettingsPage() {
             </div>
             <div>
               <h2 className="text-base font-semibold text-[var(--text-primary)]">
-                YouTube Connection
+                YouTube Integration
               </h2>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-                Visual preview for future Google OAuth sync. Channels are currently tracked locally via URL.
+                Optional read-only OAuth connection to import your YouTube subscriptions into Following, separate from app sign-in.
               </p>
             </div>
           </div>
 
           <span className="self-start sm:self-center inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-subtle)] shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-primary)]" />
-            Local URL Mode
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                youtubeIntegration.connected
+                  ? 'bg-emerald-400'
+                  : 'bg-[var(--accent-primary)]'
+              }`}
+            />
+            {youtubeIntegration.connected ? 'YouTube Connected' : 'Not Connected'}
           </span>
         </div>
 
-        <form onSubmit={handleAddYouTube} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            value={ytInput}
-            onChange={(e) => {
-              setYtInput(e.target.value);
-              if (ytFeedback) setYtFeedback(null);
-            }}
-            placeholder="https://www.youtube.com/@handle"
-            aria-label="YouTube channel URL"
-            className="flex-1 bg-[var(--bg-main)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] text-sm px-3.5 py-2 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
-          />
-          <select
-            value={ytCategory}
-            onChange={(e) => setYtCategory(e.target.value)}
-            aria-label="YouTube channel category"
-            className="bg-[var(--bg-main)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
-          >
-            {TOPIC_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Add URL
-          </button>
-        </form>
+        {/* Explicit Consent & OAuth Actions */}
+        <div className="rounded-lg bg-[var(--bg-main)]/60 border border-[var(--border-subtle)] p-4 space-y-4">
+          {youtubeIntegration.connected ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  Connected as {youtubeIntegration.channelTitle || 'YouTube Account'}
+                </p>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  {youtubeIntegration.lastSyncedAt
+                    ? `Last synchronized: ${new Date(youtubeIntegration.lastSyncedAt).toLocaleString()}`
+                    : 'Ready to import or resynchronize subscriptions.'}
+                </p>
+              </div>
 
-        {ytFeedback && (
-          <p
-            className={`text-xs ${
-              ytFeedback.type === 'error'
-                ? 'text-[#E57368]'
-                : 'text-[var(--accent-primary)]'
-            }`}
-          >
-            {ytFeedback.message}
-          </p>
-        )}
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-            <span>Tracked YouTube channels ({channels.length})</span>
-            <Link to="/following" className="text-[var(--accent-primary)] hover:underline">
-              Open Following page
-            </Link>
-          </div>
-          <div className="divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-main)]/50">
-            {channels.length === 0 ? (
-              <p className="p-4 text-xs text-[var(--text-secondary)]">
-                No YouTube channels added yet.
-              </p>
-            ) : (
-              channels.map((ch) => (
-                <div
-                  key={ch.id}
-                  className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm"
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pendingActions.youtube}
+                  onClick={() => void importYouTubeSubscriptions()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--accent-primary)]/50 transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium text-[var(--text-primary)] truncate">
-                      {ch.name}{' '}
-                      <span className="text-xs font-normal text-[var(--text-secondary)]">
-                        {ch.handle}
-                      </span>
-                    </p>
-                    <p className="text-xs text-[var(--text-secondary)] truncate">
-                      {ch.category} · {ch.url}
-                    </p>
-                  </div>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Import Subscriptions</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={pendingActions.youtube}
+                  onClick={() => void resyncYouTubeSubscriptions()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--accent-primary)]/50 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Resync</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={pendingActions.youtube}
+                  onClick={() => void disconnectYouTube()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[#E57368] border border-[var(--border-subtle)] hover:border-[#E57368]/40 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                  <span>Disconnect</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <label className="flex items-start gap-2.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={youtubeConsentChecked}
+                  onChange={(e) => setYoutubeConsentChecked(e.target.checked)}
+                  className="mt-0.5 rounded border-[var(--border-subtle)] accent-[var(--accent-primary)]"
+                />
+                <span className="leading-relaxed">
+                  I explicitly consent to grant WoahNix read-only YouTube access (
+                  <code className="text-[var(--text-primary)]">youtube.readonly</code>) solely to import my subscribed channels into Following.
+                </span>
+              </label>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs text-[var(--text-secondary)]">
+                  You can still add channels manually below without connecting Google.
+                </span>
+                <button
+                  type="button"
+                  disabled={!youtubeConsentChecked || pendingActions.youtube}
+                  onClick={() => connectYouTube()}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Youtube className="w-4 h-4" />
+                  <span>Connect YouTube Account</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Manual Channel URL Management */}
+        <div className="space-y-3 pt-1">
+          <SubscriptionForm
+            onSubmit={handleAddYouTube}
+            placeholder="https://www.youtube.com/@handle or /channel/UC..."
+            ariaLabel="YouTube channel URL"
+            submitLabel="Add URL"
+            defaultCategory="Programming"
+            isPending={pendingActions.channels}
+          />
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
+              <span>
+                {isAuthenticated
+                  ? `Tracked YouTube channels (${channels.length})`
+                  : 'Sign in to manage personal YouTube channels'}
+              </span>
+              <Link to="/following" className="text-[var(--accent-primary)] hover:underline">
+                Open Following page
+              </Link>
+            </div>
+            <div className="divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-main)]/50">
+              {!isAuthenticated ? (
+                <div className="p-4 flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+                  <span>Personal YouTube channel lists are available for registered users.</span>
                   <button
                     type="button"
-                    onClick={() => removeChannel(ch.id)}
-                    aria-label={`Remove ${ch.name}`}
-                    className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
+                    onClick={() =>
+                      openAuthPrompt('Sign in to manage your personal YouTube channels.')
+                    }
+                    className="text-[var(--accent-primary)] font-medium hover:underline cursor-pointer shrink-0"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    Sign in
                   </button>
                 </div>
-              ))
-            )}
+              ) : channels.length === 0 ? (
+                <p className="p-4 text-xs text-[var(--text-secondary)]">
+                  No YouTube channels added yet.
+                </p>
+              ) : (
+                channels.map((ch) => (
+                  <div
+                    key={ch.id}
+                    className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-[var(--text-primary)] truncate">
+                        {ch.name}{' '}
+                        <span className="text-xs font-normal text-[var(--text-secondary)]">
+                          {ch.handle}
+                        </span>
+                      </p>
+                      <p className="text-xs text-[var(--text-secondary)] truncate">
+                        {ch.category} · {ch.url}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={pendingActions.channels}
+                      onClick={() => void removeChannel(ch.id)}
+                      aria-label={`Remove ${ch.name}`}
+                      className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -214,63 +325,40 @@ export function SettingsPage() {
                 Twitch Streamer Management
               </h2>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-                Add or remove Twitch streamer URLs manually. Toggle live status to preview Live feed states.
+                Add or remove Twitch streamer URLs. Live status updates automatically from the backend stream service.
               </p>
             </div>
           </div>
 
           <span className="self-start sm:self-center inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-subtle)] shrink-0">
-            Manual Stream List
+            Twitch Helix Ready
           </span>
         </div>
 
-        <form onSubmit={handleAddTwitch} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            value={twitchInput}
-            onChange={(e) => {
-              setTwitchInput(e.target.value);
-              if (twitchFeedback) setTwitchFeedback(null);
-            }}
-            placeholder="https://www.twitch.tv/streamer_name"
-            aria-label="Twitch streamer URL"
-            className="flex-1 bg-[var(--bg-main)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] text-sm px-3.5 py-2 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
-          />
-          <select
-            value={twitchCategory}
-            onChange={(e) => setTwitchCategory(e.target.value)}
-            aria-label="Twitch streamer category"
-            className="bg-[var(--bg-main)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
-          >
-            {TOPIC_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Add Streamer
-          </button>
-        </form>
-
-        {twitchFeedback && (
-          <p
-            className={`text-xs ${
-              twitchFeedback.type === 'error'
-                ? 'text-[#E57368]'
-                : 'text-[var(--accent-primary)]'
-            }`}
-          >
-            {twitchFeedback.message}
-          </p>
-        )}
+        <SubscriptionForm
+          onSubmit={handleAddTwitch}
+          placeholder="https://www.twitch.tv/streamer_name"
+          ariaLabel="Twitch streamer URL"
+          submitLabel="Add Streamer"
+          defaultCategory="Gaming"
+          isPending={pendingActions.streams}
+        />
 
         <div className="divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-main)]/50">
-          {streams.length === 0 ? (
+          {!isAuthenticated ? (
+            <div className="p-4 flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+              <span>Sign in to save and manage your personal Twitch streamer list.</span>
+              <button
+                type="button"
+                onClick={() =>
+                  openAuthPrompt('Sign in to customize your Twitch streamer list.')
+                }
+                className="text-[var(--accent-primary)] font-medium hover:underline cursor-pointer shrink-0"
+              >
+                Sign in
+              </button>
+            </div>
+          ) : streams.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-secondary)]">
               No Twitch streamers tracked yet.
             </p>
@@ -301,13 +389,6 @@ export function SettingsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => toggleStreamLive(st.id)}
-                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-colors cursor-pointer"
-                  >
-                    {st.isLive ? 'Set Offline' : 'Set Live'}
-                  </button>
                   <a
                     href={st.url}
                     target="_blank"
@@ -319,9 +400,10 @@ export function SettingsPage() {
                   </a>
                   <button
                     type="button"
-                    onClick={() => removeStreamer(st.id)}
+                    disabled={pendingActions.streams}
+                    onClick={() => void removeStreamer(st.id)}
                     aria-label={`Remove ${st.displayName}`}
-                    className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
+                    className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[#E57368] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -343,7 +425,9 @@ export function SettingsPage() {
               Interest & Topic Preferences
             </h2>
             <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-              Select the subjects you want featured in Recommended For You on Home.
+              {isAuthenticated
+                ? 'Select the subjects you want featured in Recommended For You on Home.'
+                : 'Sign in to save personal topic preferences for your Home recommendations.'}
             </p>
           </div>
         </div>
@@ -355,9 +439,10 @@ export function SettingsPage() {
               <button
                 key={topic}
                 type="button"
+                disabled={pendingActions.preferences}
                 onClick={() => toggleInterest(topic)}
                 aria-pressed={active}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer disabled:opacity-60 ${
                   active
                     ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border-[var(--accent-primary)]/60'
                     : 'bg-[var(--bg-main)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
@@ -382,7 +467,9 @@ export function SettingsPage() {
               Appearance Preferences
             </h2>
             <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-              Choose your preferred color surface and card density. Saved automatically in your browser.
+              {isAuthenticated
+                ? 'Choose your preferred color surface and card density. Synced with your account preferences.'
+                : 'Choose your preferred color surface and card density for this session.'}
             </p>
           </div>
         </div>
@@ -457,4 +544,3 @@ export function SettingsPage() {
     </div>
   );
 }
-

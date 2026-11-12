@@ -1,15 +1,32 @@
-import { CATEGORIES, EXPLORE_TOPICS } from '../data/categories.js';
+import { CATEGORIES, EXPLORE_TOPICS, TOPIC_OPTIONS } from '../data/categories.js';
 import { INITIAL_CHANNELS } from '../data/channels.js';
 import { MOCK_VIDEOS } from '../data/videos.js';
 import { INITIAL_STREAMS } from '../data/streams.js';
-import { INITIAL_HISTORY } from '../data/history.js';
+import { API_BASE_URL, USE_BACKEND_API, apiClient } from './apiClient.js';
 
 const YOUTUBE_ID_REGEX = /^[A-Za-z0-9_-]{11}$/;
+const YOUTUBE_CHANNEL_ID_REGEX = /^UC[A-Za-z0-9_-]{22}$/;
+
+const DEFAULT_PREFERENCES = {
+  interests: [...TOPIC_OPTIONS],
+  theme: 'warm-dark',
+  compactDensity: false,
+};
+
+const DEFAULT_YOUTUBE_INTEGRATION = {
+  connected: false,
+  channelTitle: null,
+  consentGranted: false,
+  lastSyncedAt: null,
+};
+
+const BACKEND_REQUIRED_MESSAGE =
+  'Backend API is not connected yet (VITE_USE_BACKEND_API=false).';
 
 /**
- * Abstraction layer for media data.
- * Currently backed by local mock data; structured so each method
- * can be swapped with Spring Boot REST API calls later.
+ * Service layer separating UI/context state from data retrieval and mutations.
+ * Uses mock catalog data when VITE_USE_BACKEND_API is false, and connects cleanly
+ * to Spring Boot REST endpoints via `apiClient` when enabled.
  */
 export const mediaService = {
   isValidYouTubeVideoId(videoId) {
@@ -58,87 +75,302 @@ export const mediaService = {
     return null;
   },
 
+  matchesSearchQuery(textFields, query) {
+    if (!query || !query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return textFields.some((field) => field && field.toLowerCase().includes(q));
+  },
+
+  filterVideos(videos, { category = 'All', query = '', channelId = 'all', allowedInterests = null } = {}) {
+    return videos.filter((video) => {
+      if (channelId !== 'all' && video.channelId !== channelId) {
+        return false;
+      }
+
+      if (category !== 'All') {
+        if (video.category !== category) return false;
+      } else if (Array.isArray(allowedInterests) && allowedInterests.length > 0) {
+        if (!allowedInterests.includes(video.category)) return false;
+      }
+
+      return this.matchesSearchQuery(
+        [video.title, video.channelName, video.category, video.description],
+        query
+      );
+    });
+  },
+
+  filterStreams(streams, { category = 'All', query = '', onlyLive = true } = {}) {
+    return streams.filter((stream) => {
+      if (onlyLive && !stream.isLive) return false;
+      if (category !== 'All' && stream.category !== category) return false;
+      return this.matchesSearchQuery(
+        [stream.displayName, stream.streamerName, stream.title, stream.game, stream.category],
+        query
+      );
+    });
+  },
+
   getCategories() {
     return CATEGORIES;
+  },
+
+  getTopicOptions() {
+    return TOPIC_OPTIONS;
   },
 
   getExploreTopics() {
     return EXPLORE_TOPICS;
   },
 
-  getInitialChannels() {
-    return INITIAL_CHANNELS;
+  getDefaultPreferences() {
+    return DEFAULT_PREFERENCES;
   },
 
-  getVideos() {
-    return MOCK_VIDEOS;
+  getDefaultYouTubeIntegration() {
+    return DEFAULT_YOUTUBE_INTEGRATION;
   },
 
-  getInitialStreams() {
-    return INITIAL_STREAMS;
+  async fetchPublicCatalog() {
+    if (!USE_BACKEND_API) {
+      return {
+        videos: MOCK_VIDEOS,
+        streams: INITIAL_STREAMS,
+        categories: CATEGORIES,
+        exploreTopics: EXPLORE_TOPICS,
+      };
+    }
+
+    const [videos, streams, categories] = await Promise.all([
+      apiClient.get('/videos/explore'),
+      apiClient.get('/streams/live'),
+      apiClient.get('/categories'),
+    ]);
+
+    return {
+      videos,
+      streams,
+      categories: categories || CATEGORIES,
+      exploreTopics: EXPLORE_TOPICS,
+    };
   },
 
-  getInitialHistory() {
-    return INITIAL_HISTORY;
+  async fetchAuthenticatedWorkspace() {
+    if (!USE_BACKEND_API) {
+      return {
+        channels: INITIAL_CHANNELS,
+        streams: INITIAL_STREAMS,
+        watchLaterIds: [],
+        preferences: DEFAULT_PREFERENCES,
+        youtubeIntegration: DEFAULT_YOUTUBE_INTEGRATION,
+      };
+    }
+
+    return apiClient.get('/me/bootstrap');
+  },
+
+  async fetchVideoByYouTubeId(youtubeVideoId) {
+    if (!USE_BACKEND_API) {
+      return (
+        MOCK_VIDEOS.find(
+          (item) => !item.isDemoOnly && item.youtubeVideoId === youtubeVideoId
+        ) || null
+      );
+    }
+    return apiClient.get(`/videos/${encodeURIComponent(youtubeVideoId)}`);
+  },
+
+  async addYouTubeSubscription(rawInput, category = 'Technology') {
+    const parsed = this.parseYouTubeChannelInput(rawInput, category);
+    if (parsed.error) {
+      return { error: parsed.error };
+    }
+
+    if (!USE_BACKEND_API) {
+      return { channel: parsed.channel };
+    }
+
+    const channel = await apiClient.post('/subscriptions/youtube', {
+      input: rawInput.trim(),
+      category,
+      parsedChannel: parsed.channel,
+    });
+    return { channel };
+  },
+
+  async removeYouTubeSubscription(channelId) {
+    if (!USE_BACKEND_API) return;
+    await apiClient.delete(`/subscriptions/youtube/${encodeURIComponent(channelId)}`);
+  },
+
+  async addTwitchSubscription(rawInput, category = 'Gaming') {
+    const parsed = this.parseTwitchStreamerInput(rawInput, category);
+    if (parsed.error) {
+      return { error: parsed.error };
+    }
+
+    if (!USE_BACKEND_API) {
+      return { stream: parsed.stream };
+    }
+
+    const stream = await apiClient.post('/subscriptions/twitch', {
+      input: rawInput.trim(),
+      streamerName: parsed.stream.streamerName,
+      category,
+    });
+    return { stream };
+  },
+
+  async removeTwitchSubscription(streamerId) {
+    if (!USE_BACKEND_API) return;
+    await apiClient.delete(`/subscriptions/twitch/${encodeURIComponent(streamerId)}`);
+  },
+
+  async syncWatchLater(youtubeVideoId, saved) {
+    if (!USE_BACKEND_API) {
+      return { youtubeVideoId, saved };
+    }
+    if (saved) {
+      return apiClient.put(`/watch-later/${encodeURIComponent(youtubeVideoId)}`);
+    }
+    return apiClient.delete(`/watch-later/${encodeURIComponent(youtubeVideoId)}`);
+  },
+
+  async syncPreferences(preferences) {
+    if (!USE_BACKEND_API) {
+      return preferences;
+    }
+    return apiClient.put('/preferences', preferences);
+  },
+
+  getYouTubeConnectUrl() {
+    return `${API_BASE_URL}/integrations/youtube/connect`;
+  },
+
+  async importYouTubeSubscriptions() {
+    if (!USE_BACKEND_API) {
+      throw new Error(BACKEND_REQUIRED_MESSAGE);
+    }
+    return apiClient.post('/integrations/youtube/import');
+  },
+
+  async resyncYouTubeSubscriptions() {
+    if (!USE_BACKEND_API) {
+      throw new Error(BACKEND_REQUIRED_MESSAGE);
+    }
+    return apiClient.post('/integrations/youtube/sync');
+  },
+
+  async disconnectYouTube() {
+    if (!USE_BACKEND_API) {
+      throw new Error(BACKEND_REQUIRED_MESSAGE);
+    }
+    return apiClient.delete('/integrations/youtube');
   },
 
   parseYouTubeChannelInput(rawInput, category = 'Technology') {
     const trimmed = rawInput.trim();
-    if (!trimmed) return { error: 'Please enter a YouTube channel URL or @handle.' };
+    if (!trimmed) {
+      return { error: 'Please enter a YouTube channel URL or @handle.' };
+    }
 
-    let handle = '';
-    let url = trimmed;
+    let handleSlug = '';
+    let canonicalChannelId = null;
+    let normalizedUrl = '';
 
     try {
-      const normalizedUrl = trimmed.startsWith('http')
-        ? trimmed
-        : trimmed.includes('youtube.com') || trimmed.includes('youtu.be')
-          ? `https://${trimmed}`
-          : null;
+      const hasUrlSyntax =
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.includes('youtube.com') ||
+        trimmed.includes('youtu.be');
 
-      if (normalizedUrl) {
-        const parsed = new URL(normalizedUrl);
-        if (!parsed.hostname.includes('youtube.com') && !parsed.hostname.includes('youtu.be')) {
+      if (hasUrlSyntax) {
+        const candidateUrl = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+        const parsed = new URL(candidateUrl);
+        const host = parsed.hostname.replace(/^www\./, '');
+
+        if (host === 'youtu.be' || parsed.pathname === '/watch') {
+          return { error: 'Please enter a YouTube channel URL, not a video URL.' };
+        }
+        if (host !== 'youtube.com' && host !== 'm.youtube.com') {
           return { error: 'Please enter a valid youtube.com channel URL or @handle.' };
         }
+
         const segments = parsed.pathname.split('/').filter(Boolean);
-        handle = segments[segments.length - 1] || '';
-        url = parsed.toString();
+        if (segments.length === 0) {
+          return { error: 'Please enter a specific YouTube channel URL.' };
+        }
+
+        if (['watch', 'shorts', 'embed', 'live', 'playlist'].includes(segments[0])) {
+          return { error: 'Please enter a YouTube channel URL, not a video or playlist URL.' };
+        }
+
+        const handleSegment = segments.find((seg) => seg.startsWith('@'));
+        if (handleSegment) {
+          handleSlug = handleSegment.slice(1);
+          normalizedUrl = `https://www.youtube.com/@${handleSlug}`;
+        } else if (segments[0] === 'channel' && segments[1]) {
+          if (!YOUTUBE_CHANNEL_ID_REGEX.test(segments[1])) {
+            return { error: 'Invalid YouTube channel ID format (expected UC...).' };
+          }
+          canonicalChannelId = segments[1];
+          handleSlug = segments[1];
+          normalizedUrl = `https://www.youtube.com/channel/${canonicalChannelId}`;
+        } else if (['c', 'user'].includes(segments[0]) && segments[1]) {
+          handleSlug = segments[1];
+          normalizedUrl = `https://www.youtube.com/${segments[0]}/${handleSlug}`;
+        } else {
+          handleSlug = segments[0];
+          normalizedUrl = `https://www.youtube.com/@${handleSlug}`;
+        }
       } else {
-        handle = trimmed.replace(/^@/, '');
-        url = `https://www.youtube.com/@${handle}`;
+        handleSlug = trimmed.replace(/^@/, '');
+        if (YOUTUBE_CHANNEL_ID_REGEX.test(handleSlug)) {
+          canonicalChannelId = handleSlug;
+          normalizedUrl = `https://www.youtube.com/channel/${canonicalChannelId}`;
+        } else {
+          normalizedUrl = `https://www.youtube.com/@${handleSlug}`;
+        }
       }
     } catch {
       return { error: 'Invalid YouTube URL format.' };
     }
 
-    const cleanSlug = handle.replace(/^@/, '').replace(/[^a-zA-Z0-9._-]/g, '');
+    const cleanSlug = handleSlug.replace(/[^a-zA-Z0-9._-]/g, '');
     if (!cleanSlug) {
-      return { error: 'Could not extract a channel handle from that URL.' };
+      return { error: 'Could not extract a channel identifier from that URL.' };
     }
 
-    const formattedName = cleanSlug
-      .split(/[-_.]/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ');
+    const formattedName = canonicalChannelId
+      ? canonicalChannelId
+      : cleanSlug
+          .split(/[-_.]/)
+          .filter(Boolean)
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ');
 
-    const initials = formattedName
-      .split(' ')
-      .slice(0, 2)
-      .map((w) => w.charAt(0).toUpperCase())
-      .join('') || 'YT';
+    const initials = canonicalChannelId
+      ? 'YT'
+      : formattedName
+          .split(' ')
+          .slice(0, 2)
+          .map((w) => w.charAt(0).toUpperCase())
+          .join('') || 'YT';
+
+    const platformKey = canonicalChannelId || `@${cleanSlug.toLowerCase()}`;
 
     return {
       channel: {
-        id: `ch-${cleanSlug.toLowerCase()}-${Date.now()}`,
+        id: platformKey,
+        youtubeChannelId: canonicalChannelId,
         name: formattedName || cleanSlug,
-        handle: `@${cleanSlug}`,
-        url,
+        handle: canonicalChannelId ? canonicalChannelId : `@${cleanSlug}`,
+        url: normalizedUrl,
         category,
-        subscribers: 'New',
+        subscribers: 'Pending sync',
         avatarInitials: initials,
-        description: `Manually added YouTube channel (${url}).`,
+        description: `Queued for YouTube channel sync (${normalizedUrl}).`,
         addedAt: new Date().toISOString().slice(0, 10),
       },
     };
@@ -146,7 +378,9 @@ export const mediaService = {
 
   parseTwitchStreamerInput(rawInput, category = 'Gaming') {
     const trimmed = rawInput.trim();
-    if (!trimmed) return { error: 'Please enter a Twitch channel URL or username.' };
+    if (!trimmed) {
+      return { error: 'Please enter a Twitch channel URL or username.' };
+    }
 
     let username = '';
     let url = '';
@@ -156,11 +390,15 @@ export const mediaService = {
       if (trimmed.startsWith('http') || hasDomain) {
         const normalized = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
         const parsed = new URL(normalized);
-        if (!parsed.hostname.includes('twitch.tv')) {
+        const host = parsed.hostname.replace(/^www\./, '');
+        if (host !== 'twitch.tv' && host !== 'm.twitch.tv') {
           return { error: 'Please enter a valid twitch.tv URL or username.' };
         }
         const segments = parsed.pathname.split('/').filter(Boolean);
-        username = (segments[0] || '').toLowerCase();
+        if (segments.length === 0 || ['directory', 'videos', 'downloads', 'jobs'].includes(segments[0])) {
+          return { error: 'Please enter a valid Twitch streamer URL.' };
+        }
+        username = segments[0].toLowerCase();
         url = `https://www.twitch.tv/${username}`;
       } else {
         username = trimmed.replace(/^@/, '').toLowerCase();
@@ -189,22 +427,21 @@ export const mediaService = {
 
     return {
       stream: {
-        id: `tw-${cleanUsername}-${Date.now()}`,
+        id: cleanUsername,
+        twitchUserId: null,
         streamerName: cleanUsername,
         displayName: displayName || cleanUsername,
         url,
-        title: `${displayName || cleanUsername} — Live stream feed ready`,
+        title: `${displayName || cleanUsername} — Pending live status sync`,
         game: category === 'Programming' ? 'Software and Game Development' : category,
         category,
-        viewerCount: 420,
-        isLive: true,
-        startedAt: 'Just added',
+        viewerCount: 0,
+        isLive: false,
+        startedAt: 'Offline',
         avatarInitials: initials,
-        thumbnail:
-          'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80',
-        tags: [category, 'Tracked'],
+        thumbnail: null,
+        tags: [category],
       },
     };
   },
 };
-

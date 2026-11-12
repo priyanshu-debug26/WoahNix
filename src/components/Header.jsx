@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
-import { Menu, User } from 'lucide-react';
+import { Menu, User, LogIn } from 'lucide-react';
 import { SearchBar } from './SearchBar';
 import { useMedia } from '../context/MediaContext';
+import { useAuth } from '../context/AuthContext';
 
 export function Header({ title, onOpenMobileMenu }) {
   const { searchQuery, setSearchQuery } = useMedia();
+  const { isAuthenticated, user } = useAuth();
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-[var(--bg-main)]/95 backdrop-blur-sm border-b border-[var(--border-subtle)] px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
@@ -31,9 +33,23 @@ export function Header({ title, onOpenMobileMenu }) {
           className="w-full max-w-xs sm:max-w-sm"
         />
 
+        {!isAuthenticated && (
+          <Link
+            to="/login"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--accent-primary)]/50 transition-colors shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+            <span>Sign in</span>
+          </Link>
+        )}
+
         <Link
           to="/settings"
-          title="Settings & Preferences"
+          title={
+            isAuthenticated
+              ? `${user?.name || user?.email || 'Account'} · Settings`
+              : 'Settings & Preferences'
+          }
           aria-label="Open settings and preferences"
           className="w-9 h-9 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:border-[var(--accent-primary)]/50 transition-colors duration-150 shrink-0"
         >
@@ -43,4 +59,3 @@ export function Header({ title, onOpenMobileMenu }) {
     </header>
   );
 }
-

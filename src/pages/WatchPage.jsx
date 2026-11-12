@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Link,
   useLocation,
@@ -21,18 +21,19 @@ export function WatchPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { videos, isBookmarked, toggleWatchLater, recordWatch } = useMedia();
+  const { videos, isBookmarked, toggleWatchLater, pendingActions } = useMedia();
 
   const rawV = searchParams.get('v')?.trim() || '';
   const demoId = searchParams.get('demo')?.trim() || '';
 
   const isValidVideoId = mediaService.isValidYouTubeVideoId(rawV);
 
-  const matchedVideo = useMemo(() => {
+  const catalogMatch = useMemo(() => {
     if (rawV) {
-      return videos.find(
-        (item) => !item.isDemoOnly && item.youtubeVideoId === rawV
-      ) || null;
+      return (
+        videos.find((item) => !item.isDemoOnly && item.youtubeVideoId === rawV) ||
+        null
+      );
     }
     if (demoId) {
       return videos.find((item) => item.id === demoId) || null;
@@ -40,14 +41,38 @@ export function WatchPage() {
     return null;
   }, [videos, rawV, demoId]);
 
-  const isDemoEntry = Boolean(demoId) || Boolean(matchedVideo?.isDemoOnly);
-  const canEmbed = isValidVideoId && !isDemoEntry;
+  const [fetchedVideo, setFetchedVideo] = useState(null);
+  const [isFetchingVideo, setIsFetchingVideo] = useState(false);
 
   useEffect(() => {
-    if (canEmbed && matchedVideo) {
-      recordWatch(matchedVideo.id);
+    let active = true;
+    if (!isValidVideoId || catalogMatch) {
+      setFetchedVideo(null);
+      setIsFetchingVideo(false);
+      return undefined;
     }
-  }, [canEmbed, matchedVideo, recordWatch]);
+
+    setIsFetchingVideo(true);
+    mediaService
+      .fetchVideoByYouTubeId(rawV)
+      .then((result) => {
+        if (active) setFetchedVideo(result);
+      })
+      .catch(() => {
+        if (active) setFetchedVideo(null);
+      })
+      .finally(() => {
+        if (active) setIsFetchingVideo(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [rawV, isValidVideoId, catalogMatch]);
+
+  const matchedVideo = catalogMatch || fetchedVideo;
+  const isDemoEntry = Boolean(demoId) || Boolean(matchedVideo?.isDemoOnly);
+  const canEmbed = isValidVideoId && !isDemoEntry;
 
   const upNextVideos = useMemo(
     () =>
@@ -82,7 +107,7 @@ export function WatchPage() {
   const youtubeUrl = canEmbed
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(rawV)}`
     : null;
-  const bookmarked = matchedVideo ? isBookmarked(matchedVideo.id) : false;
+  const bookmarked = canEmbed ? isBookmarked(rawV) : false;
 
   return (
     <div className="space-y-6">
@@ -179,85 +204,95 @@ export function WatchPage() {
           {/* Video Metadata Card */}
           {(canEmbed || matchedVideo) && (
             <section className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-5 sm:p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                <div className="space-y-2 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--accent-primary)] border border-[var(--border-subtle)]">
-                      {displayCategory}
-                    </span>
-                    {isDemoEntry && (
-                      <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                        Demo-only placeholder
-                      </span>
-                    )}
-                  </div>
-
-                  <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)] leading-snug">
-                    {displayTitle}
-                  </h1>
+              {isFetchingVideo ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-5 w-2/3 rounded bg-[var(--bg-elevated)]" />
+                  <div className="h-4 w-1/3 rounded bg-[var(--bg-elevated)]" />
                 </div>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="space-y-2 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--accent-primary)] border border-[var(--border-subtle)]">
+                          {displayCategory}
+                        </span>
+                        {isDemoEntry && (
+                          <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                            Demo-only placeholder
+                          </span>
+                        )}
+                      </div>
 
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  {matchedVideo && (
-                    <button
-                      type="button"
-                      onClick={() => toggleWatchLater(matchedVideo.id)}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                        bookmarked
-                          ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border-[var(--accent-primary)]/50'
-                          : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:border-[var(--text-secondary)]/50'
-                      }`}
-                    >
-                      {bookmarked ? (
-                        <>
-                          <BookmarkCheck className="w-4 h-4" />
-                          <span>Saved</span>
-                        </>
-                      ) : (
-                        <>
-                          <Bookmark className="w-4 h-4" />
-                          <span>Watch Later</span>
-                        </>
+                      <h1 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)] leading-snug">
+                        {displayTitle}
+                      </h1>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {canEmbed && (
+                        <button
+                          type="button"
+                          disabled={pendingActions.watchLater}
+                          onClick={() => void toggleWatchLater(rawV)}
+                          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer disabled:opacity-60 ${
+                            bookmarked
+                              ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border-[var(--accent-primary)]/50'
+                              : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:border-[var(--text-secondary)]/50'
+                          }`}
+                        >
+                          {bookmarked ? (
+                            <>
+                              <BookmarkCheck className="w-4 h-4" />
+                              <span>Saved</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bookmark className="w-4 h-4" />
+                              <span>Watch Later</span>
+                            </>
+                          )}
+                        </button>
                       )}
-                    </button>
-                  )}
 
-                  {youtubeUrl && (
-                    <a
-                      href={youtubeUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors"
-                    >
-                      <span>Open on YouTube</span>
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--border-subtle)]">
-                <div className="flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-xs font-semibold text-[var(--text-primary)]">
-                    {displayInitials}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">
-                      {displayChannel}
-                    </p>
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      {matchedVideo
-                        ? `${matchedVideo.views} views · ${matchedVideo.publishedAt}`
-                        : `Video ID: ${rawV}`}
-                    </p>
+                      {youtubeUrl && (
+                        <a
+                          href={youtubeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-[#171614] hover:bg-[var(--accent-hover)] transition-colors"
+                        >
+                          <span>Open on YouTube</span>
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {displayDescription && (
-                <p className="text-sm text-[var(--text-secondary)] leading-relaxed pt-1">
-                  {displayDescription}
-                </p>
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--border-subtle)]">
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center text-xs font-semibold text-[var(--text-primary)]">
+                        {displayInitials}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-[var(--text-primary)]">
+                          {displayChannel}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)]">
+                          {matchedVideo
+                            ? `${matchedVideo.views} views · ${matchedVideo.publishedAt}`
+                            : `Video ID: ${rawV}`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {displayDescription && (
+                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed pt-1">
+                      {displayDescription}
+                    </p>
+                  )}
+                </>
               )}
             </section>
           )}

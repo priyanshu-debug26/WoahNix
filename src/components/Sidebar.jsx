@@ -5,7 +5,6 @@ import {
   Radio,
   Compass,
   Bookmark,
-  History,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,7 +19,6 @@ const NAV_ITEMS = [
   { to: '/live', label: 'Live', icon: Radio, badgeKey: 'live' },
   { to: '/explore', label: 'Explore', icon: Compass },
   { to: '/watch-later', label: 'Watch Later', icon: Bookmark, badgeKey: 'watchLater' },
-  { to: '/history', label: 'History', icon: History },
 ];
 
 export function Sidebar({

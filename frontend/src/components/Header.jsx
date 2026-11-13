@@ -47,7 +47,7 @@ export function Header({ title, onOpenMobileMenu }) {
           to="/settings"
           title={
             isAuthenticated
-              ? `${user?.name || user?.email || 'Account'} · Settings`
+              ? `${user?.username || user?.name || user?.email || 'Account'} · Settings`
               : 'Settings & Preferences'
           }
           aria-label="Open settings and preferences"

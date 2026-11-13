@@ -37,11 +37,11 @@ export const authService = {
     });
   },
 
-  async register({ name, email, password }) {
-    const trimmedName = name.trim();
+  async register({ username, email, password }) {
+    const trimmedUsername = username.trim();
     const trimmedEmail = email.trim();
-    if (!trimmedName || !trimmedEmail || !password) {
-      throw new Error('Please complete name, email, and password.');
+    if (!trimmedUsername || !trimmedEmail || !password) {
+      throw new Error('Please complete username, email, and password.');
     }
     if (password.length < 8) {
       throw new Error('Password must be at least 8 characters.');
@@ -50,7 +50,7 @@ export const authService = {
       throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
     }
     return apiClient.post('/auth/register', {
-      name: trimmedName,
+      username: trimmedUsername,
       email: trimmedEmail,
       password,
     });

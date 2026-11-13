@@ -13,7 +13,7 @@ export function RegisterPage() {
     continueWithGoogle,
   } = useAuth();
 
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,7 +28,7 @@ export function RegisterPage() {
     setFormError(null);
     setIsSubmitting(true);
     try {
-      await register({ name, email, password });
+      await register({ username, email, password });
       navigate('/');
     } catch (err) {
       setFormError(err?.message || 'Unable to create account.');
@@ -117,19 +117,19 @@ export function RegisterPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label
-                htmlFor="register-name"
+                htmlFor="register-username"
                 className="block text-xs font-medium text-[var(--text-secondary)]"
               >
-                Display name
+                Username
               </label>
               <input
-                id="register-name"
+                id="register-username"
                 type="text"
-                autoComplete="name"
+                autoComplete="username"
                 required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Alex Morgan"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="alexmorgan"
                 className="w-full bg-[var(--bg-main)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] text-sm px-3.5 py-2.5 rounded-lg border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-primary)]"
               />
             </div>

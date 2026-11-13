@@ -93,7 +93,7 @@ export function SettingsPage() {
             <div>
               <h2 className="text-base font-semibold text-[var(--text-primary)]">
                 {isAuthenticated
-                  ? user?.name || user?.email || 'WoahNix Account'
+                  ? user?.username || user?.name || user?.email || 'WoahNix Account'
                   : 'Guest Session'}
               </h2>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">

@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+target/
+build/
+out/
 
 # Local environment & logs
 .env
@@ -11,7 +14,11 @@ dist-ssr/
 *.log
 npm-debug.log*
 
+# IDE & Editor metadata
+.idea/
+*.iml
+.vscode/
+
 # OS / Desktop metadata
 .directory
 .DS_Store
-

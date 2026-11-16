@@ -1,5 +1,7 @@
 package com.woahnix_backend.service;
 
+import com.woahnix_backend.exception.EmailAlreadyExist;
+import com.woahnix_backend.exception.UserNameAlreadyExistExcep;
 import com.woahnix_backend.model.User;
 import com.woahnix_backend.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,11 +21,15 @@ public class UserService {
     public User registerUser(User user){
 
         if(userRepository.existsByUsername(user.getUsername())){
-            throw new RuntimeException("Username is already taken!");
+            throw new UserNameAlreadyExistExcep(
+                    "Username already taken!"
+            );
         }
 
         if(userRepository.existsByEmail(user.getEmail())){
-            throw new RuntimeException("Email is already registered!");
+            throw new EmailAlreadyExist(
+                    "Email is already registered!"
+            );
         }
 
         user.setPassword(
